@@ -1,0 +1,58 @@
+---
+tag: RSP_TEST
+number: 100
+levels:
+  - tag: Car
+    relative: false
+    number: 7
+  - tag: Road
+    relative: true
+    number: 14
+    levels:
+      - tag: Straight
+        relative: true
+        number: 50
+      - tag: Curved
+        relative: true
+        number: 50
+  - tag: Obstacle
+    relative: false
+    number: 40
+    levels:
+      - tag: Hole
+        relative: false
+        number: 13
+      - tag: Pile
+        relative: false
+        number: 13
+      - tag: Cow
+        relative: false
+        number: 13
+      - tag: BabyCarriage
+        relative: false
+        number: 1
+  - tag: PowerUps
+    relative: true
+    number: 50
+    levels:
+      - tag: Fast
+        relative: true
+      - tag: Missle
+        relative: true
+      - tag: Star
+        relative: true
+      - tag: Laser
+        relative: true
+        levels:
+            - tag: Kill
+              relative: true
+            - tag: Slow
+              relative: true
+            - tag: Stop
+              relative: true
+      - tag: OilSlick
+        relative: true
+      - tag: Teleport
+        relative: true
+      - tag: Other
+        relative: true

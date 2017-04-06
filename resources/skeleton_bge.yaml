@@ -1,0 +1,36 @@
+---
+tag: BGE_TEST
+number: 0
+levels:
+  - tag: Galaxy
+    leaf: true
+    number: 1
+    levels:
+      - tag: Star
+        leaf: true
+        number: 2
+        levels:
+        - tag: Planet
+          leaf: true
+          number: 3
+          levels:
+            - tag: Civilization
+              number: 1
+            - tag: Trees
+              number: 10
+            - tag: Rocks
+              number: 10
+      - tag: Asteroid
+        number: 10
+      - tag: BlackHole
+        levels:
+          - tag: Type1
+            number: 5
+          - tag: Type2
+            number: 2
+          - tag: Type3
+            number: 2
+          - tag: Type4
+            number: 1
+      - tag: Dust
+        number: 10 
