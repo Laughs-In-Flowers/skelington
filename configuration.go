@@ -7,11 +7,13 @@ import (
 	"github.com/Laughs-In-Flowers/log"
 )
 
-type ConfigFn func(*skeleton) error
+//
+type ConfigFn func(*Processor) error
 
+//
 type Config interface {
 	Order() int
-	Configure(*skeleton) error
+	Configure(*Processor) error
 }
 
 type config struct {
@@ -19,19 +21,23 @@ type config struct {
 	fn    ConfigFn
 }
 
+//
 func DefaultConfig(fn ConfigFn) Config {
 	return config{50, fn}
 }
 
+//
 func NewConfig(order int, fn ConfigFn) Config {
 	return config{order, fn}
 }
 
+//
 func (c config) Order() int {
 	return c.order
 }
 
-func (c config) Configure(f *skeleton) error {
+//
+func (c config) Configure(f *Processor) error {
 	return c.fn(f)
 }
 
@@ -49,6 +55,7 @@ func (c configList) Less(i, j int) bool {
 	return c[i].Order() < c[j].Order()
 }
 
+//
 type Configuration interface {
 	Add(...Config)
 	AddFn(...ConfigFn)
@@ -57,33 +64,35 @@ type Configuration interface {
 }
 
 type configuration struct {
-	s          *skeleton
+	p          *Processor
 	configured bool
 	list       configList
 }
 
-func newConfiguration(s *skeleton, conf ...Config) *configuration {
+func newConfiguration(p *Processor, conf ...Config) *configuration {
 	c := &configuration{
-		s:    s,
+		p:    p,
 		list: builtIns,
 	}
 	c.Add(conf...)
 	return c
 }
 
+//
 func (c *configuration) Add(conf ...Config) {
 	c.list = append(c.list, conf...)
 }
 
+//
 func (c *configuration) AddFn(fns ...ConfigFn) {
 	for _, fn := range fns {
 		c.list = append(c.list, DefaultConfig(fn))
 	}
 }
 
-func configure(s *skeleton, conf ...Config) error {
+func configure(p *Processor, conf ...Config) error {
 	for _, c := range conf {
-		err := c.Configure(s)
+		err := c.Configure(p)
 		if err != nil {
 			return err
 		}
@@ -91,10 +100,11 @@ func configure(s *skeleton, conf ...Config) error {
 	return nil
 }
 
+//
 func (c *configuration) Configure() error {
 	sort.Sort(c.list)
 
-	err := configure(c.s, c.list...)
+	err := configure(c.p, c.list...)
 	if err == nil {
 		c.configured = true
 	}
@@ -102,6 +112,7 @@ func (c *configuration) Configure() error {
 	return err
 }
 
+//
 func (c *configuration) Configured() bool {
 	return c.configured
 }
@@ -109,85 +120,109 @@ func (c *configuration) Configured() bool {
 var builtIns = []Config{
 	config{1001, sLogger},
 	config{1002, sRoot},
-	config{1003, sFile},
-	config{1004, sAllocator},
+	config{1004, sError},
+	config{1005, sAllocator},
 }
 
-func sLogger(s *skeleton) error {
-	if s.Logger == nil {
+func sLogger(p *Processor) error {
+	if p.Logger == nil {
 		l := log.New(os.Stdout, log.LInfo, log.DefaultNullFormatter())
 		log.Current = l
-		s.Logger = l
+		p.Logger = l
 	}
 	return nil
 }
 
+//
 func SkeletonLogger(k string) Config {
 	return NewConfig(2000,
-		func(s *skeleton) error {
+		func(p *Processor) error {
 			switch k {
 			case "stdout", "text":
-				s.SwapFormatter(log.GetFormatter("skelington_text"))
+				p.SwapFormatter(log.GetFormatter("skelington_text"))
+			default:
+				p.SwapFormatter(log.GetFormatter(k))
 			}
 			return nil
 		})
 }
 
-var RooterConfigurationError = Xrror("No %s is set for this skeleton instance.").Out
+var ConfigurationError = Xrror("configuration error: %s").Out
 
-func sRoot(s *skeleton) error {
-	if s.root == nil {
-		return RooterConfigurationError("ROOT")
+func sRoot(p *Processor) error {
+	if p.root == nil {
+		return ConfigurationError("no ROOT specified")
 	}
 	return nil
 }
 
+//
 func SkeletonRoot(path string) Config {
-	return NewConfig(50,
-		func(s *skeleton) error {
+	return DefaultConfig(
+		func(p *Processor) error {
 			r := newPather("root", path)
-			s.root = r
+			p.root = r
 			return nil
 		})
 }
 
-func sFile(s *skeleton) error {
-	if s.file == nil {
-		return RooterConfigurationError("FILE")
-	}
-	return nil
-}
-
+//
 func SkeletonFile(path string) Config {
-	return NewConfig(50,
-		func(s *skeleton) error {
+	return DefaultConfig(
+		func(p *Processor) error {
 			r := newPather("file", path)
-			s.file = r
+			p.file = r
 			return nil
 		})
 }
 
-var AllocatorConfigurationError = Xrror("No allocator is set for this skeleton instance.")
-
-func sAllocator(s *skeleton) error {
-	if s.Allocator == nil {
-		return AllocatorConfigurationError
+func sError(p *Processor) error {
+	if p.errorHandler == Unspecified {
+		p.errorHandler = ContinueOnError
 	}
 	return nil
 }
 
+//
+func SkeletonError(err string) Config {
+	return DefaultConfig(
+		func(p *Processor) error {
+			var perr ErrorHandling = ContinueOnError
+			switch err {
+			case "exit":
+				perr = ExitOnError
+			case "panic":
+				perr = PanicOnError
+			}
+			p.errorHandler = perr
+			return nil
+		})
+}
+
+func sAllocator(p *Processor) error {
+	if p.Allocator == nil {
+		p.Allocator = Allocators.Get("emp")
+	}
+	return nil
+}
+
+//
 func SkeletonAllocator(k string) Config {
 	return NewConfig(50,
-		func(s *skeleton) error {
+		func(p *Processor) error {
 			a := Allocators.Get(k)
-			s.Allocator = a
+			p.Allocator = a
 			return nil
 		})
 }
 
-func logConfiguration(l log.Logger) {
-	//logger
-	//root
-	//file
-	//allocator
+//
+func SkeletonAllocationOffset(o string) Config {
+	return NewConfig(50,
+		func(p *Processor) error {
+			if o != "" {
+				p.offset = o
+			}
+			return nil
+		})
 }

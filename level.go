@@ -2,7 +2,6 @@ package skelington
 
 import (
 	"bytes"
-	"strings"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -20,7 +19,7 @@ type Level struct {
 	Levels   []*Level
 }
 
-func Read(path string) (*Level, error) {
+func ReadFromFile(path string) (*Level, error) {
 	f, err := Open(path)
 	if err != nil {
 		return nil, err
@@ -38,6 +37,10 @@ func Read(path string) (*Level, error) {
 	}
 	notate(lv, lv.Levels, 0)
 	return lv, nil
+}
+
+func ReadFromDirectory(path string) (*Level, error) {
+	return nil, nil
 }
 
 func notate(p *Level, ls []*Level, d int) {
@@ -68,9 +71,9 @@ func tagged(lv *Level) []string {
 	return reverse(gather(lv, []string{}))
 }
 
-func (lv *Level) Tagged() string {
-	return strings.Join(tagged(lv), ",")
-}
+//func (lv *Level) Tagged() string {
+//	return strings.Join(tagged(lv), ",")
+//}
 
 func (lv *Level) Family() []*Tag {
 	ret := make([]*Tag, 0)
@@ -121,8 +124,8 @@ func (lv *Level) CloneMultiple(n int) []*Level {
 }
 
 func (lv *Level) Iter(fn func(*Level)) {
+	fn(lv)
 	for _, l := range lv.Levels {
-		fn(l)
 		l.Iter(fn)
 	}
 }

@@ -1,28 +1,82 @@
 package skelington
 
+//
 type Allocator interface {
+	Tag() string
 	New() Allocator
-	Open(string) error
-	Allocate(*Tag, string) (*Handles, error)
+	Allocate(Pather, Pather, string, ErrorHandler) *Skeleton
 }
 
-// Reallocating Shrinking Pie
-type rsp struct {
-	l *Level
+//
+type ReadFrom int
+
+const (
+	RFNone ReadFrom = iota
+	RFConfFile
+	RFDirectory
+)
+
+//
+type InnerAllocatorFn func(*Level, *Tag, string, ErrorHandler) *Skeleton
+
+type allocator struct {
+	tag string
+	rf  ReadFrom
+	fn  InnerAllocatorFn
+	l   *Level
 }
 
-func (r *rsp) New() Allocator {
-	na := *r
+func newAllocator(tag string, rf ReadFrom, fn InnerAllocatorFn) Allocator {
+	return &allocator{tag, rf, fn, nil}
+}
+
+//
+func (a *allocator) Tag() string {
+	return a.tag
+}
+
+//
+func (a *allocator) New() Allocator {
+	na := *a
 	return &na
 }
 
-func (r *rsp) Open(path string) error {
-	lv, err := Read(path)
+//
+func (a *allocator) Allocate(p Pather, r Pather, offset string, eh ErrorHandler) *Skeleton {
+	err := open(a, p, r)
+	if err != nil {
+		eh(err)
+		return nil
+	}
+	root := r.Tag()
+	return a.fn(a.l, root, offset, eh)
+}
+
+func open(a *allocator, p, r Pather) error {
+	var lv *Level
+	var err error
+	switch a.rf {
+	case RFConfFile:
+		path := p.Path()
+		lv, err = ReadFromFile(path)
+	case RFDirectory:
+		root := r.Path()
+		lv, err = ReadFromDirectory(root)
+	}
 	if err != nil {
 		return err
 	}
-	r.l = lv
+	a.l = lv
 	return nil
+}
+
+func isOffset(offset string, z *Level) *Level {
+	if offset != "" {
+		if nz := z.Offset(offset); nz != nil {
+			return nz
+		}
+	}
+	return z
 }
 
 func enumerate(lv *Level, from int) error {
@@ -66,86 +120,79 @@ func enumerate(lv *Level, from int) error {
 	return nil
 }
 
-func (r *rsp) Allocate(root *Tag, offset string) (*Handles, error) {
-	var z *Level = r.l
+// An empty allocation, i.e. returns a skeleton with nothing.
+func EMPAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
+	return newSkeleton()
+}
 
-	if offset != "" {
-		if o := z.Offset(offset); o != nil {
-			z = o
-		}
-	}
+// A continually reallocating shrinking proportion allocation. Given a number,
+// will attempt to allocate handles by proportion of handles remaining to allocate.
+func RSPAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
+	z = isOffset(offset, z)
 
 	err := enumerate(z, z.Number)
 	if err != nil {
-		return nil, err
+		eh(err)
+		return nil
 	}
 
-	h := NewHandles()
+	s := newSkeleton()
+	s.AddHook(HPost, SkeletonSequence)
+	s.RunHook(HBefore)
 	add := make([]Handle, 0)
-
 	for _, lv := range flatten(z) {
 		for i := 1; i <= lv.Actual; i++ {
-			nh := newHandle(&Sequence{i, lv.Actual}, root, lv.Family(), lv.Unit())
+			nh := newHandle(lv.sequence, root, lv.Family(), lv.Unit())
 			add = append(add, nh)
 		}
 	}
+	s.Add(add...)
+	s.RunHook(HAfter)
 
-	h.Add(add...)
-
-	return h, nil
+	return s
 }
 
-// Branching Expansion
-type bge struct {
-	l *Level
-}
-
-func (b *bge) New() Allocator {
-	na := *b
-	return &na
-}
-
-func (b *bge) Open(path string) error {
-	lv, err := Read(path)
-	if err != nil {
-		return err
-	}
-	b.l = lv
-	return nil
-}
-
-func (b *bge) Allocate(root *Tag, offset string) (*Handles, error) {
-	z := b.l
-
-	if offset != "" {
-		if o := z.Offset(offset); o != nil {
-			z = o
-		}
-	}
+// A branching expansion allocation. From the root will branch and create handles
+// as directed and necessary.
+func BGEAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
+	z = isOffset(offset, z)
 
 	z.Iter(branch)
 
-	h := NewHandles()
+	s := newSkeleton()
+	s.AddHook(HPost, SkeletonSequence)
+	s.RunHook(HBefore)
 	add := make([]Handle, 0)
-
 	fn := func(lv *Level) {
 		if isLeaf(lv) {
-			nh := newHandle(nil, root, lv.Family(), lv.Unit())
+			nh := newHandle(lv.sequence, root, lv.Family(), lv.Unit())
 			add = append(add, nh)
 		}
 	}
-
 	z.Iter(fn)
+	s.Add(add...)
+	s.RunHook(HAfter)
 
-	h.Add(add...)
+	return s
+}
 
-	return h, nil
+// An allocation derived existing directory of files.
+func EDFAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
+	s := newSkeleton()
+	//add hooks
+	s.RunHook(HBefore)
+	add := make([]Handle, 0)
+	s.Add(add...)
+	s.RunHook(HAfter)
+
+	return s
 }
 
 type allocators struct {
 	has map[string]Allocator
 }
 
+//
 func (a *allocators) Get(k string) Allocator {
 	if g, ok := a.has[k]; ok {
 		return g.New()
@@ -153,14 +200,18 @@ func (a *allocators) Get(k string) Allocator {
 	return nil
 }
 
-func (a *allocators) Set(k string, fn Allocator) {
-	a.has[k] = fn
+//
+func (a *allocators) Set(c Allocator) {
+	a.has[c.Tag()] = c
 }
 
+//
 var Allocators *allocators
 
 func init() {
 	Allocators = &allocators{make(map[string]Allocator, 0)}
-	Allocators.Set("rsp", &rsp{})
-	Allocators.Set("bge", &bge{})
+	Allocators.Set(newAllocator("emp", RFNone, EMPAllocate))
+	Allocators.Set(newAllocator("rsp", RFConfFile, RSPAllocate))
+	Allocators.Set(newAllocator("bge", RFConfFile, BGEAllocate))
+	Allocators.Set(newAllocator("edf", RFDirectory, EDFAllocate))
 }
