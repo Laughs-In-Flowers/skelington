@@ -6,6 +6,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
+// A recursive structure used as a tool for exploring and creating handles.
 type Level struct {
 	parent   *Level
 	depth    int
@@ -19,8 +20,10 @@ type Level struct {
 	Levels   []*Level
 }
 
+// Provided a path string, will attempt to read a yaml file there, creating a new
+// Level instance and an error.
 func ReadFromFile(path string) (*Level, error) {
-	f, err := Open(path)
+	f, err := open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -39,6 +42,8 @@ func ReadFromFile(path string) (*Level, error) {
 	return lv, nil
 }
 
+// Provided a path string, will attempt to read from that directoryto create a
+// new Level instance and an error.
 func ReadFromDirectory(path string) (*Level, error) {
 	return nil, nil
 }
@@ -71,10 +76,7 @@ func tagged(lv *Level) []string {
 	return reverse(gather(lv, []string{}))
 }
 
-//func (lv *Level) Tagged() string {
-//	return strings.Join(tagged(lv), ",")
-//}
-
+//
 func (lv *Level) Family() []*Tag {
 	ret := make([]*Tag, 0)
 	tgd := tagged(lv)
@@ -88,6 +90,7 @@ func (lv *Level) Family() []*Tag {
 	return ret
 }
 
+//
 func (lv *Level) Unit() *Tag {
 	t := &Tag{}
 	tgd := tagged(lv)
@@ -101,6 +104,7 @@ func (lv *Level) Unit() *Tag {
 	return t
 }
 
+//
 func (lv *Level) Clone() *Level {
 	parent := lv.parent
 	var children []*Level
@@ -114,6 +118,7 @@ func (lv *Level) Clone() *Level {
 	return ret
 }
 
+//
 func (lv *Level) CloneMultiple(n int) []*Level {
 	ret := make([]*Level, 0)
 	for i := 1; i <= n; i = i + 1 {
@@ -123,6 +128,7 @@ func (lv *Level) CloneMultiple(n int) []*Level {
 	return ret
 }
 
+//
 func (lv *Level) Iter(fn func(*Level)) {
 	fn(lv)
 	for _, l := range lv.Levels {

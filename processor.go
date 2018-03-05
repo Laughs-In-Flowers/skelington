@@ -7,7 +7,8 @@ import (
 	"github.com/Laughs-In-Flowers/log"
 )
 
-// A core processing type to generate a Skeleton instance.
+// A core processing type to generate a Skelington instance. Maintains configuration,
+// settings, logging, and allocation.
 type Processor struct {
 	root         Pather
 	file         Pather
@@ -35,14 +36,14 @@ func newProcessor(cnf ...Config) (*Processor, error) {
 	return s, nil
 }
 
-//
-func (p *Processor) Process() *Skeleton {
+// The core function that produces a Skelington instance from an allocation strategy.
+func (p *Processor) Process() *Skelington {
 	p.Print("begin processing")
 	if p.offset != "" {
 		p.Printf("processing with offset %s")
 	}
 
-	var ret *Skeleton
+	var ret *Skelington
 	ret = p.Allocate(p.file, p.root, p.offset, p.manageError)
 
 	p.Printf("finished processing")

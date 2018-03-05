@@ -7,7 +7,7 @@ import (
 
 func TestSkelington(t *testing.T) {
 	d, err := newProcessor(
-		SkeletonRoot("test"),
+		SkelingtonRoot("test"),
 	)
 	if err != nil {
 		t.Errorf("error obtaining test base: %s", err)
@@ -56,9 +56,9 @@ func testSequence(t *testing.T) {
 	}
 }
 
-func testHandle(t *testing.T, s *Skeleton) {
+func testHandle(t *testing.T, s *Skelington) {
 	hs := make(map[string]string)
-	SkeletonCallsHandle(s,
+	SkelingtonHandleCalls(s,
 		func(hh Handle) error {
 			k := hh.Key()
 			v := hh.Tagged(true)
@@ -114,27 +114,27 @@ func compareStats(t *testing.T, have, expect map[string]int) {
 	}
 }
 
-func testSkeleton(expected map[string]int,
+func testSkelington(expected map[string]int,
 	root, file, allocator, offset string,
 	t *testing.T,
-	hf ...HandleFunc) {
+	hf ...HandleCall) {
 	s, err := New(
-		SkeletonRoot(root),
-		SkeletonFile(file),
-		SkeletonAllocator(allocator),
-		SkeletonAllocationOffset(offset),
+		SkelingtonRoot(root),
+		SkelingtonFile(file),
+		SkelingtonAllocator(allocator),
+		SkelingtonAllocationOffset(offset),
 	)
-	SkeletonCallsStatistics(s, []StatFunc{}, []StatFunc{})
+	skelingtonCallsStatistics(s, []StatFunc{}, []StatFunc{})
 	if err != nil {
 		t.Errorf("error with skeleton instance %s: %s", allocator, err)
 	}
 	testHandle(t, s)
-	compareStats(t, s.Stat, expected)
+	compareStats(t, currStats, expected)
 }
 
 func testEMPAllocator(t *testing.T) {
 	exp := map[string]int{}
-	testSkeleton(exp, "test", "", "", "", t)
+	testSkelington(exp, "test", "", "", "", t)
 }
 
 func testRSPAllocator(t *testing.T) {
@@ -166,8 +166,8 @@ func testRSPAllocator(t *testing.T) {
 		"HOLE":         13,
 	}
 
-	testSkeleton(exp, "test", "resources/skeleton_rsp.yaml", "rsp", "", t)
-	testSkeleton(exp0, "test", "resources/skeleton_rsp.yaml", "rsp", "Obstacle", t)
+	testSkelington(exp, "test", "resources/skeleton_rsp.yaml", "rsp", "", t)
+	testSkelington(exp0, "test", "resources/skeleton_rsp.yaml", "rsp", "Obstacle", t)
 }
 
 func testBGEAllocator(t *testing.T) {
@@ -197,12 +197,73 @@ func testBGEAllocator(t *testing.T) {
 		"STAR":         1,
 	}
 
-	testSkeleton(exp, "test", "resources/skeleton_bge.yaml", "bge", "", t)
-	testSkeleton(exp0, "test", "resources/skeleton_bge.yaml", "bge", "Star", t)
+	testSkelington(exp, "test", "resources/skeleton_bge.yaml", "bge", "", t)
+	testSkelington(exp0, "test", "resources/skeleton_bge.yaml", "bge", "Star", t)
 }
 
 func testEDFAllocator(t *testing.T) {
 	exp := map[string]int{}
 
-	testSkeleton(exp, "", "", "edf", "", t)
+	testSkelington(exp, "", "", "edf", "", t)
+}
+
+// Sets the statistics hook for the skeleton, taking two array of StatFunc. The first are run
+// once per handle, the second run on every invocation of a per handle once function.
+// Statistics are not run until this hook is set manually.
+func skelingtonCallsStatistics(s *Skelington, once []StatFunc, every []StatFunc) {
+	var stats = newStats()
+	for _, h := range s.Has {
+		t := h.Unit()
+		tag := strings.ToUpper(t.Value)
+		once = append(once, func(m map[string]int) {
+			stats.d[tag] = stats.d[tag] + 1
+		})
+	}
+	stats.onceFn = once
+
+	s.AddHook(
+		HPost,
+		func(s *Skelington) error {
+			stats.once()
+			currStats = stats.d
+			return nil
+		})
+}
+
+// A map of string key to int values for Skelington statistics.
+type Statistics map[string]int
+
+var currStats Statistics
+
+type stats struct {
+	d       map[string]int
+	onceFn  []StatFunc
+	everyFn []StatFunc
+}
+
+func newStats() *stats {
+	return &stats{
+		d:       make(map[string]int),
+		everyFn: everyFuncs,
+	}
+}
+
+func (s *stats) once() {
+	for _, fn := range s.onceFn {
+		fn(s.d)
+		s.every()
+	}
+}
+
+func (s *stats) every() {
+	for _, fn := range s.everyFn {
+		fn(s.d)
+	}
+}
+
+// A statistics function taking a map of string key to int values.
+type StatFunc func(map[string]int)
+
+var everyFuncs = []StatFunc{
+	func(m map[string]int) { m["TOTAL"] = m["TOTAL"] + 1 },
 }

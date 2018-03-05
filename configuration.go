@@ -7,10 +7,11 @@ import (
 	"github.com/Laughs-In-Flowers/log"
 )
 
-//
+// A function taking a Processor instance for configuration and returning an error.
 type ConfigFn func(*Processor) error
 
-//
+// An interface for a Config function that provides order and configuration functionality
+// for a Processor instance.
 type Config interface {
 	Order() int
 	Configure(*Processor) error
@@ -21,44 +22,46 @@ type config struct {
 	fn    ConfigFn
 }
 
-//
+// A default Config with arbitrary order of 50
 func DefaultConfig(fn ConfigFn) Config {
 	return config{50, fn}
 }
 
-//
+// Returns a new Config with the provided int order and ConfigFn.
 func NewConfig(order int, fn ConfigFn) Config {
 	return config{order, fn}
 }
 
-//
+// A function returning the order of the Config instance for sorting.
 func (c config) Order() int {
 	return c.order
 }
 
-//
+// A function providing the Processor to the Config instance.
 func (c config) Configure(f *Processor) error {
 	return c.fn(f)
 }
 
 type configList []Config
 
+// configList Len, satisfying the Sort interface
 func (c configList) Len() int {
 	return len(c)
 }
 
+// configList Swap, satisfying the Sort interface
 func (c configList) Swap(i, j int) {
 	c[i], c[j] = c[j], c[i]
 }
 
+// configList Less, satisfying the Sort interface
 func (c configList) Less(i, j int) bool {
 	return c[i].Order() < c[j].Order()
 }
 
-//
+// An interface providing an abstraction of configuration functionality.
 type Configuration interface {
 	Add(...Config)
-	AddFn(...ConfigFn)
 	Configure() error
 	Configured() bool
 }
@@ -78,16 +81,9 @@ func newConfiguration(p *Processor, conf ...Config) *configuration {
 	return c
 }
 
-//
+// Adds any number of Config to the configuration instance.
 func (c *configuration) Add(conf ...Config) {
 	c.list = append(c.list, conf...)
-}
-
-//
-func (c *configuration) AddFn(fns ...ConfigFn) {
-	for _, fn := range fns {
-		c.list = append(c.list, DefaultConfig(fn))
-	}
 }
 
 func configure(p *Processor, conf ...Config) error {
@@ -100,7 +96,8 @@ func configure(p *Processor, conf ...Config) error {
 	return nil
 }
 
-//
+// Configures the configuraton instance by providing the Processor to all Config,
+// returning any error immediately.
 func (c *configuration) Configure() error {
 	sort.Sort(c.list)
 
@@ -112,7 +109,7 @@ func (c *configuration) Configure() error {
 	return err
 }
 
-//
+// Returns a boolean indicating if configuration has been run.
 func (c *configuration) Configured() bool {
 	return c.configured
 }
@@ -133,8 +130,12 @@ func sLogger(p *Processor) error {
 	return nil
 }
 
-//
-func SkeletonLogger(k string) Config {
+// Sets the logger used by a string key. Both 'stdout' & 'text' change the logger
+// from the default null to default initialized text logging. Any other string key
+// will attempt to swap the logger to that key(which must've been set before hand
+// in other intialization or exists as a default available logger with the logging
+// package).
+func SkelingtonLogger(k string) Config {
 	return NewConfig(2000,
 		func(p *Processor) error {
 			switch k {
@@ -147,7 +148,7 @@ func SkeletonLogger(k string) Config {
 		})
 }
 
-var ConfigurationError = Xrror("configuration error: %s").Out
+var ConfigurationError = xrror("configuration error: %s").Out
 
 func sRoot(p *Processor) error {
 	if p.root == nil {
@@ -156,8 +157,8 @@ func sRoot(p *Processor) error {
 	return nil
 }
 
-//
-func SkeletonRoot(path string) Config {
+// Sets the root used by skelington & allocator.
+func SkelingtonRoot(path string) Config {
 	return DefaultConfig(
 		func(p *Processor) error {
 			r := newPather("root", path)
@@ -166,8 +167,8 @@ func SkeletonRoot(path string) Config {
 		})
 }
 
-//
-func SkeletonFile(path string) Config {
+// Sets the file path to read a configuration from, if the allocator requires one.
+func SkelingtonFile(path string) Config {
 	return DefaultConfig(
 		func(p *Processor) error {
 			r := newPather("file", path)
@@ -183,8 +184,9 @@ func sError(p *Processor) error {
 	return nil
 }
 
-//
-func SkeletonError(err string) Config {
+// Sets the skelington error handling method by string key:
+// one of 'continue', 'exit', or 'panic' with the default being 'continue'.
+func SkelingtonError(err string) Config {
 	return DefaultConfig(
 		func(p *Processor) error {
 			var perr ErrorHandling = ContinueOnError
@@ -206,8 +208,8 @@ func sAllocator(p *Processor) error {
 	return nil
 }
 
-//
-func SkeletonAllocator(k string) Config {
+// Sets an allocator for the skelington by string key.
+func SkelingtonAllocator(k string) Config {
 	return NewConfig(50,
 		func(p *Processor) error {
 			a := Allocators.Get(k)
@@ -216,8 +218,8 @@ func SkeletonAllocator(k string) Config {
 		})
 }
 
-//
-func SkeletonAllocationOffset(o string) Config {
+// Provides any desired offset to the allocator.
+func SkelingtonAllocationOffset(o string) Config {
 	return NewConfig(50,
 		func(p *Processor) error {
 			if o != "" {

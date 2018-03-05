@@ -5,19 +5,21 @@ import (
 	"sort"
 )
 
+// An interface encapsulating one particular abstract item handled by a Skelington.
 type Handle interface {
 	Sequencer
 	Tagger
 	Pather
 	Caller
-	Ignorer
 }
 
+// A sequencing interface.
 type Sequencer interface {
 	Sequence() *Sequence
 	SetSequence(*Sequence)
 }
 
+// A tagging interface.
 type Tagger interface {
 	Root() *Tag
 	Family() []*Tag
@@ -25,16 +27,14 @@ type Tagger interface {
 	Tagged(bool) TagSort
 }
 
-type HandleFunc func(Handle) error
+// A function taking a Handle and returning an error.
+type HandleCall func(Handle) error
 
+// An interface for managing HandleFunc.
 type Caller interface {
 	Call() error
-	SetCall(...HandleFunc)
-}
-
-type Ignorer interface {
-	Ignore()
-	Ignored() bool
+	SetCall(...HandleCall)
+	Clear()
 }
 
 type handle struct {
@@ -43,45 +43,47 @@ type handle struct {
 	root     *Tag
 	family   []*Tag
 	unit     *Tag
-	calls    []HandleFunc
-	ignore   bool
-	callOnce bool
+	calls    []HandleCall
 }
 
 func newHandle(s *Sequence, root *Tag, family []*Tag, unit *Tag) *handle {
 	h := &handle{
-		V4Quick(),
+		v4Quick(),
 		s,
 		root,
 		family,
 		unit,
-		make([]HandleFunc, 0),
-		false,
-		true,
+		make([]HandleCall, 0),
 	}
 	return h
 }
 
+//
 func (h *handle) Sequence() *Sequence {
 	return h.sequence
 }
 
+//
 func (h *handle) SetSequence(s *Sequence) {
 	h.sequence = s
 }
 
+//
 func (h *handle) Root() *Tag {
 	return h.root
 }
 
+//
 func (h *handle) Family() []*Tag {
 	return h.family
 }
 
+//
 func (h *handle) Unit() *Tag {
 	return h.unit
 }
 
+// An array of Tag instances for sorting.
 type TagSort []*Tag
 
 func (s TagSort) Len() int           { return len(s) }
@@ -95,6 +97,7 @@ func (s TagSort) List() []string {
 	return ret
 }
 
+//
 func (h *handle) Tagged(seq bool) TagSort {
 	var ret TagSort
 	ret = append(ret, h.Root())
@@ -109,53 +112,42 @@ func (h *handle) Tagged(seq bool) TagSort {
 	return ret
 }
 
-// Key() for Pather interface
+// Key() for Pather interface.
 func (h *handle) Key() string {
 	return h.id
 }
 
-// Path() for Pather interface
+// Path() for Pather interface.
 func (h *handle) Path() string {
 	s := h.Tagged(true)
 	return filepath.Join(s.List()...)
 }
 
-// SetPath() for pather interface, but do not set a path for this case
+// SetPath() for pather interface, but do not set a path for this case.
 func (h *handle) SetPath(path string) {}
 
-// Tag() for Pather interface
+// Tag() for Pather interface.
 func (h *handle) Tag() *Tag {
 	return &Tag{-1, h.Key()}
 }
 
-func (h *handle) Ignore() {
-	h.ignore = true
-}
-
-func (h *handle) Ignored() bool {
-	return h.ignore
-}
-
+// Runs through every set HandleFunc for this handle, returning any error immediately.
 func (h *handle) Call() error {
 	var err error
 	for _, fn := range h.calls {
-		if !h.Ignored() {
-			err = fn(h)
-			if err != nil {
-				return err
-			}
+		err = fn(h)
+		if err != nil {
+			return err
 		}
-	}
-	if h.callOnce {
-		h.deleteCall()
 	}
 	return err
 }
 
-func (h *handle) SetCall(c ...HandleFunc) {
+// Sets any number of HandleFunc to be called on this handle.
+func (h *handle) SetCall(c ...HandleCall) {
 	h.calls = append(h.calls, c...)
 }
 
-func (h *handle) deleteCall() {
-	h.calls = make([]HandleFunc, 0)
+func (h *handle) Clear() {
+	h.calls = make([]HandleCall, 0)
 }

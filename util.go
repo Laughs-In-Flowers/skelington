@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-//
+// A type used for switching on various error handling methods.
 type ErrorHandling int
 
 const (
@@ -18,41 +18,36 @@ const (
 	PanicOnError
 )
 
-//
+// A function taking an error for specific handling.
 type ErrorHandler func(error)
 
-type xrror struct {
+type xrr struct {
 	base string
 	vals []interface{}
 }
 
-//
-func (x *xrror) Error() string {
+func (x *xrr) Error() string {
 	return fmt.Sprintf("%s", fmt.Sprintf(x.base, x.vals...))
 }
 
-//
-func (x *xrror) Out(vals ...interface{}) *xrror {
+func (x *xrr) Out(vals ...interface{}) *xrr {
 	x.vals = vals
 	return x
 }
 
-//
-func Xrror(base string) *xrror {
-	return &xrror{base: base}
+func xrror(base string) *xrr {
+	return &xrr{base: base}
 }
 
-var openError = Xrror("unable to find or open file %s, provided %s").Out
+var openError = xrror("unable to find or open file %s, provided %s").Out
 
-//
-func Exist(path string) {
+func exist(path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		os.MkdirAll(path, os.ModeDir|0755)
 	}
 }
 
-//
-func Open(path string) (*os.File, error) {
+func open(path string) (*os.File, error) {
 	p := filepath.Clean(path)
 	dir, name := filepath.Split(p)
 	var fp string
@@ -61,7 +56,7 @@ func Open(path string) (*os.File, error) {
 	case "":
 		fp, err = filepath.Abs(name)
 	default:
-		Exist(dir)
+		exist(dir)
 		fp, err = filepath.Abs(p)
 	}
 
@@ -76,13 +71,13 @@ func Open(path string) (*os.File, error) {
 	return nil, openError(fp, path)
 }
 
-//
+// A struct for a tag containing an integer order and a string value.
 type Tag struct {
 	Order int
 	Value string
 }
 
-//
+// An interface for managing an abstraction of a path with a variety of dimensions.
 type Pather interface {
 	Key() string
 	Path() string
@@ -98,44 +93,45 @@ func newPather(key, path string) *pather {
 	return &pather{key, path}
 }
 
-//
+// The string key of the pather.
 func (p *pather) Key() string {
 	return p.key
 }
 
-//
+// The string path of the pather.
 func (p *pather) Path() string {
 	return p.path
 }
 
-//
+// Sets the pather path with the provided string.
 func (p *pather) SetPath(path string) {
 	p.path = path
 }
 
-//
+// The tag of the pather.
 func (p *pather) Tag() *Tag {
 	return &Tag{0, p.path}
 }
 
-//
+// A struct for managing a specific point within a sequence containing integers
+// for number and count.
 type Sequence struct {
-	number, count int
+	Number, Count int
 }
 
-//
+// The string value for the given sequence.
 func (s *Sequence) String() string {
-	return fmt.Sprintf("%d-of-%d", s.number, s.count)
+	return fmt.Sprintf("%d-of-%d", s.Number, s.Count)
 }
 
-//
+// A 16 byte universally unique identifier
 type UUID [16]byte
 
 var halfbyte2hexchar = []byte{
 	48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102,
 }
 
-//
+// A string value for the given UUID.
 func (u UUID) String() string {
 	b := [36]byte{}
 
@@ -158,8 +154,7 @@ func (u UUID) String() string {
 	return string(b[:])
 }
 
-//
-func V4() (UUID, error) {
+func v4() (UUID, error) {
 	u := UUID{}
 
 	_, err := cr.Read(u[:])
@@ -173,9 +168,8 @@ func V4() (UUID, error) {
 	return u, nil
 }
 
-//
-func V4Quick() string {
-	u, err := V4()
+func v4Quick() string {
+	u, err := v4()
 	if err != nil {
 		return err.Error()
 	}

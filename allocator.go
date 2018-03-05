@@ -4,70 +4,60 @@ package skelington
 type Allocator interface {
 	Tag() string
 	New() Allocator
-	Allocate(Pather, Pather, string, ErrorHandler) *Skeleton
+	Allocate(Pather, Pather, string, ErrorHandler) *Skelington
 }
 
-//
-type ReadFrom int
+type innerOpenFn func(Pather, Pather) (*Level, error)
 
-const (
-	RFNone ReadFrom = iota
-	RFConfFile
-	RFDirectory
-)
+func openNone(Pather, Pather) (*Level, error) {
+	return nil, nil
+}
 
-//
-type InnerAllocatorFn func(*Level, *Tag, string, ErrorHandler) *Skeleton
+func openFile(file Pather, root Pather) (*Level, error) {
+	path := file.Path()
+	return ReadFromFile(path)
+}
+
+func openDir(file Pather, root Pather) (*Level, error) {
+	path := root.Path()
+	return ReadFromDirectory(path)
+}
+
+type innerAllocatorFn func(*Level, *Tag, string, ErrorHandler) *Skelington
 
 type allocator struct {
 	tag string
-	rf  ReadFrom
-	fn  InnerAllocatorFn
+	ofn innerOpenFn
+	afn innerAllocatorFn
 	l   *Level
 }
 
-func newAllocator(tag string, rf ReadFrom, fn InnerAllocatorFn) Allocator {
-	return &allocator{tag, rf, fn, nil}
+func newAllocator(tag string, ofn innerOpenFn, afn innerAllocatorFn) Allocator {
+	return &allocator{tag, ofn, afn, nil}
 }
 
-//
+// A tag for this allocator.
 func (a *allocator) Tag() string {
 	return a.tag
 }
 
-//
+// Provides a new instance of the allocator for use.
 func (a *allocator) New() Allocator {
 	na := *a
 	return &na
 }
 
-//
-func (a *allocator) Allocate(p Pather, r Pather, offset string, eh ErrorHandler) *Skeleton {
-	err := open(a, p, r)
+// The primary allocation function of the allocator. Provided two pathers, an offset string
+// and an Errorhandler function, allocates and returns a new Skelington instance.
+func (a *allocator) Allocate(p Pather, r Pather, offset string, eh ErrorHandler) *Skelington {
+	lv, err := a.ofn(p, r)
 	if err != nil {
 		eh(err)
 		return nil
 	}
-	root := r.Tag()
-	return a.fn(a.l, root, offset, eh)
-}
-
-func open(a *allocator, p, r Pather) error {
-	var lv *Level
-	var err error
-	switch a.rf {
-	case RFConfFile:
-		path := p.Path()
-		lv, err = ReadFromFile(path)
-	case RFDirectory:
-		root := r.Path()
-		lv, err = ReadFromDirectory(root)
-	}
-	if err != nil {
-		return err
-	}
 	a.l = lv
-	return nil
+	root := r.Tag()
+	return a.afn(a.l, root, offset, eh)
 }
 
 func isOffset(offset string, z *Level) *Level {
@@ -121,13 +111,13 @@ func enumerate(lv *Level, from int) error {
 }
 
 // An empty allocation, i.e. returns a skeleton with nothing.
-func EMPAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
-	return newSkeleton()
+func empAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
+	return newSkelington()
 }
 
 // A continually reallocating shrinking proportion allocation. Given a number,
 // will attempt to allocate handles by proportion of handles remaining to allocate.
-func RSPAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
+func rspAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
 	z = isOffset(offset, z)
 
 	err := enumerate(z, z.Number)
@@ -136,8 +126,8 @@ func RSPAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton 
 		return nil
 	}
 
-	s := newSkeleton()
-	s.AddHook(HPost, SkeletonSequence)
+	s := newSkelington()
+	s.AddHook(HPost, SkelingtonSequence)
 	s.RunHook(HBefore)
 	add := make([]Handle, 0)
 	for _, lv := range flatten(z) {
@@ -154,13 +144,13 @@ func RSPAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton 
 
 // A branching expansion allocation. From the root will branch and create handles
 // as directed and necessary.
-func BGEAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
+func bgeAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
 	z = isOffset(offset, z)
 
 	z.Iter(branch)
 
-	s := newSkeleton()
-	s.AddHook(HPost, SkeletonSequence)
+	s := newSkelington()
+	s.AddHook(HPost, SkelingtonSequence)
 	s.RunHook(HBefore)
 	add := make([]Handle, 0)
 	fn := func(lv *Level) {
@@ -177,8 +167,8 @@ func BGEAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton 
 }
 
 // An allocation derived existing directory of files.
-func EDFAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skeleton {
-	s := newSkeleton()
+func edfAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
+	s := newSkelington()
 	//add hooks
 	s.RunHook(HBefore)
 	add := make([]Handle, 0)
@@ -192,7 +182,7 @@ type allocators struct {
 	has map[string]Allocator
 }
 
-//
+// Provided a string key, attempts to return a new Allocator of that key.
 func (a *allocators) Get(k string) Allocator {
 	if g, ok := a.has[k]; ok {
 		return g.New()
@@ -200,18 +190,23 @@ func (a *allocators) Get(k string) Allocator {
 	return nil
 }
 
-//
+// Sets an allocator instance for future use.
 func (a *allocators) Set(c Allocator) {
 	a.has[c.Tag()] = c
 }
 
-//
+// A struct maintaining available allocators.
+// Package defaults provide the following allocators:
+// emp - only provides an empty Skelington instance for further use.
+// rsp - reallocating shrinking proportion
+// bge - branching expansion
+// edf - existing directory of files
 var Allocators *allocators
 
 func init() {
 	Allocators = &allocators{make(map[string]Allocator, 0)}
-	Allocators.Set(newAllocator("emp", RFNone, EMPAllocate))
-	Allocators.Set(newAllocator("rsp", RFConfFile, RSPAllocate))
-	Allocators.Set(newAllocator("bge", RFConfFile, BGEAllocate))
-	Allocators.Set(newAllocator("edf", RFDirectory, EDFAllocate))
+	Allocators.Set(newAllocator("emp", openNone, empAllocate))
+	Allocators.Set(newAllocator("rsp", openFile, rspAllocate))
+	Allocators.Set(newAllocator("bge", openFile, bgeAllocate))
+	Allocators.Set(newAllocator("edf", openDir, edfAllocate))
 }
