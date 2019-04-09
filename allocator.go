@@ -1,29 +1,29 @@
 package skelington
 
-//
+// An interface that handles Skelington allocation by specific strategy.
 type Allocator interface {
 	Tag() string
 	New() Allocator
-	Allocate(Pather, Pather, string, ErrorHandler) *Skelington
+	Allocate(*Skelington, Pather, Pather, string, ErrorHandler) *Skelington
 }
 
-type innerOpenFn func(Pather, Pather) (*Level, error)
+type innerOpenFn func(Pather, Pather, string) (*Level, error)
 
-func openNone(Pather, Pather) (*Level, error) {
+func openNone(Pather, Pather, string) (*Level, error) {
 	return nil, nil
 }
 
-func openFile(file Pather, root Pather) (*Level, error) {
+func openFile(file Pather, root Pather, offset string) (*Level, error) {
 	path := file.Path()
 	return ReadFromFile(path)
 }
 
-func openDir(file Pather, root Pather) (*Level, error) {
+func openDir(file Pather, root Pather, offset string) (*Level, error) {
 	path := root.Path()
-	return ReadFromDirectory(path)
+	return ReadFromDirectory(path, offset)
 }
 
-type innerAllocatorFn func(*Level, *Tag, string, ErrorHandler) *Skelington
+type innerAllocatorFn func(*Skelington, *Level, *Tag, string, ErrorHandler) *Skelington
 
 type allocator struct {
 	tag string
@@ -49,20 +49,20 @@ func (a *allocator) New() Allocator {
 
 // The primary allocation function of the allocator. Provided two pathers, an offset string
 // and an Errorhandler function, allocates and returns a new Skelington instance.
-func (a *allocator) Allocate(p Pather, r Pather, offset string, eh ErrorHandler) *Skelington {
-	lv, err := a.ofn(p, r)
+func (a *allocator) Allocate(s *Skelington, p Pather, r Pather, offset string, eh ErrorHandler) *Skelington {
+	lv, err := a.ofn(p, r, offset)
 	if err != nil {
 		eh(err)
 		return nil
 	}
 	a.l = lv
-	root := r.Tag()
-	return a.afn(a.l, root, offset, eh)
+	root := r.GetTag()
+	return a.afn(s, a.l, root, offset, eh)
 }
 
-func isOffset(offset string, z *Level) *Level {
-	if offset != "" {
-		if nz := z.Offset(offset); nz != nil {
+func isOffset(o string, z *Level) *Level {
+	if o != "" {
+		if nz := offset(z, o); nz != nil {
 			return nz
 		}
 	}
@@ -111,13 +111,15 @@ func enumerate(lv *Level, from int) error {
 }
 
 // An empty allocation, i.e. returns a skeleton with nothing.
-func empAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
-	return newSkelington()
+func empAllocate(s *Skelington, z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
+	return s
 }
 
-// A continually reallocating shrinking proportion allocation. Given a number,
-// will attempt to allocate handles by proportion of handles remaining to allocate.
-func rspAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
+//wsiwyg allocator, no calc, no branch, nothing just turn file to handles
+
+// A continually reallocating shrinking proportion allocation. Attempts to
+// allocate handles by proportion of handles remaining to allocate.
+func rspAllocate(s *Skelington, z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
 	z = isOffset(offset, z)
 
 	err := enumerate(z, z.Number)
@@ -126,7 +128,6 @@ func rspAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelingto
 		return nil
 	}
 
-	s := newSkelington()
 	s.AddHook(HPost, SkelingtonSequence)
 	s.RunHook(HBefore)
 	add := make([]Handle, 0)
@@ -138,18 +139,16 @@ func rspAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelingto
 	}
 	s.Add(add...)
 	s.RunHook(HAfter)
-
 	return s
 }
 
-// A branching expansion allocation. From the root will branch and create handles
+// A branching expansion allocation. Branches expand from a root to create handles
 // as directed and necessary.
-func bgeAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
+func bgeAllocate(s *Skelington, z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
 	z = isOffset(offset, z)
 
 	z.Iter(branch)
 
-	s := newSkelington()
 	s.AddHook(HPost, SkelingtonSequence)
 	s.RunHook(HBefore)
 	add := make([]Handle, 0)
@@ -166,15 +165,25 @@ func bgeAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelingto
 	return s
 }
 
-// An allocation derived existing directory of files.
-func edfAllocate(z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
-	s := newSkelington()
-	//add hooks
-	s.RunHook(HBefore)
+// An allocation derived an existing directory of files.
+func edfAllocate(s *Skelington, z *Level, root *Tag, offset string, eh ErrorHandler) *Skelington {
+	toAdd := make(map[*Level]int)
 	add := make([]Handle, 0)
+	s.AddHook(HPost, SkelingtonSequence)
+	s.RunHook(HBefore)
+	z.Iter(func(iv *Level) {
+		if iv.Number > 0 {
+			toAdd[iv] = iv.Number - 1
+		}
+	})
+	for k, v := range toAdd {
+		for i := 0; i <= v; i = i + 1 {
+			nh := newHandle(k.sequence, root, k.Family(), k.Unit())
+			add = append(add, nh)
+		}
+	}
 	s.Add(add...)
 	s.RunHook(HAfter)
-
 	return s
 }
 

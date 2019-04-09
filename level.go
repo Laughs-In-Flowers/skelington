@@ -2,6 +2,9 @@ package skelington
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
+	"regexp"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -20,10 +23,19 @@ type Level struct {
 	Levels   []*Level
 }
 
+func emptyLevel(tag string) *Level {
+	return &Level{
+		Tag:    tag,
+		Levels: make([]*Level, 0),
+	}
+}
+
 // Provided a path string, will attempt to read a yaml file there, creating a new
 // Level instance and an error.
 func ReadFromFile(path string) (*Level, error) {
-	f, err := open(path)
+	var f *os.File
+	var err error
+	f, err = open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -42,12 +54,6 @@ func ReadFromFile(path string) (*Level, error) {
 	return lv, nil
 }
 
-// Provided a path string, will attempt to read from that directoryto create a
-// new Level instance and an error.
-func ReadFromDirectory(path string) (*Level, error) {
-	return nil, nil
-}
-
 func notate(p *Level, ls []*Level, d int) {
 	d = d + 1
 	p.depth = d
@@ -55,6 +61,62 @@ func notate(p *Level, ls []*Level, d int) {
 		child.parent = p
 		notate(child, child.Levels, d)
 	}
+}
+
+// Provided a path string, will attempt to read from that directory to create a
+// new Level instance and an error.
+func ReadFromDirectory(path string, offset string) (*Level, error) {
+	var seq *regexp.Regexp
+	var err error
+	seq, err = regexp.Compile(offset)
+	if err != nil {
+		return nil, err
+	}
+	lv := emptyLevel(path)
+	lv, err = walk(lv, path, seq)
+	if err != nil {
+		return nil, err
+	}
+	notate(lv, lv.Levels, 0)
+	return lv, nil
+}
+
+func walk(lv *Level, path string, seq *regexp.Regexp) (*Level, error) {
+	flat := make(map[string]*Level)
+	flat[filepath.Base(path)] = lv
+
+	resErr := filepath.Walk(path, func(p string, f os.FileInfo, e error) error {
+		var base string = filepath.Base(p)
+		var err error
+		var fl *os.File
+		fl, err = os.Open(p)
+		if err != nil {
+			return err
+		}
+		var dirs []string
+		dirs, err = fl.Readdirnames(-1)
+		if err != nil {
+			return err
+		}
+		for _, dir := range dirs {
+			switch {
+			case seq.MatchString(dir):
+				if par, ok := flat[base]; ok {
+					par.Number = par.Number + 1
+				}
+			default:
+				clv := emptyLevel(dir)
+				if par, ok := flat[base]; ok {
+					clv.parent = par
+					par.Levels = append(par.Levels, clv)
+				}
+				flat[dir] = clv
+			}
+		}
+		return err
+	})
+
+	return lv, resErr
 }
 
 func reverse(in []string) []string {
@@ -76,7 +138,7 @@ func tagged(lv *Level) []string {
 	return reverse(gather(lv, []string{}))
 }
 
-//
+// Return an array of Tags as the Level family.
 func (lv *Level) Family() []*Tag {
 	ret := make([]*Tag, 0)
 	tgd := tagged(lv)
@@ -90,7 +152,7 @@ func (lv *Level) Family() []*Tag {
 	return ret
 }
 
-//
+// Return the Level unit Tag.
 func (lv *Level) Unit() *Tag {
 	t := &Tag{}
 	tgd := tagged(lv)
@@ -104,7 +166,7 @@ func (lv *Level) Unit() *Tag {
 	return t
 }
 
-//
+// Returns a clone of the Level.
 func (lv *Level) Clone() *Level {
 	parent := lv.parent
 	var children []*Level
@@ -118,7 +180,7 @@ func (lv *Level) Clone() *Level {
 	return ret
 }
 
-//
+// Clone the Level to the provided number.
 func (lv *Level) CloneMultiple(n int) []*Level {
 	ret := make([]*Level, 0)
 	for i := 1; i <= n; i = i + 1 {
@@ -128,7 +190,7 @@ func (lv *Level) CloneMultiple(n int) []*Level {
 	return ret
 }
 
-//
+// Apply the provided function to the Level, and propagate to all child Level.
 func (lv *Level) Iter(fn func(*Level)) {
 	fn(lv)
 	for _, l := range lv.Levels {
@@ -161,7 +223,7 @@ func (f *flat) flatten(l *Level) {
 	}
 }
 
-func (lv *Level) Offset(tag string) *Level {
+func offset(lv *Level, tag string) *Level {
 	var ret *Level
 	fn := func(ll *Level) {
 		if ll.Tag == tag {

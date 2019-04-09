@@ -1,32 +1,39 @@
 package skelington
 
-// A struct generated to specification containing a flattened array of Handle and
-// hook functionality.
+// A struct generated to specification containing a flattened array of Handle
+// and hook functionality.
 type Skelington struct {
 	Has []Handle
 	Hooks
+	Statistic
 }
 
 // Creates new Skelington instance from provided Config
 func New(cnf ...Config) (*Skelington, error) {
-	p, perr := newProcessor(cnf...)
-	if perr != nil {
-		return nil, perr
+	p, pErr := newProcessor(cnf...)
+	if pErr != nil {
+		return nil, pErr
 	}
 	s := p.Process()
 	return s, nil
 }
 
-func newSkelington() *Skelington {
+func newSkelington(
+	h map[HookTiming][]SkelingtonHook,
+	m map[string][]StatFunc,
+) *Skelington {
 	s := &Skelington{
-		make([]Handle, 0), nil,
+		make([]Handle, 0), nil, nil,
 	}
 	s.Hooks = newHooks(s)
+	for k, v := range h {
+		s.AddHook(k, v...)
+	}
+	s.Statistic = newStat(s, m)
 	return s
 }
 
-// Adds any number of Handle instance to Skelington instance, if Always is true,
-// all hooks will be run after Handle is added.
+// Adds any number of Handle instance to Skelington instance.
 func (s *Skelington) Add(nhs ...Handle) error {
 	preErr := s.RunHook(HPre)
 	if preErr != nil {
@@ -37,6 +44,12 @@ func (s *Skelington) Add(nhs ...Handle) error {
 	return postErr
 }
 
+//func (s *Skelington) Clear() {
+//reset all hooks to defaults
+//empty handles
+//reset stats
+//}
+
 // A function taking a Skelington instance and returning an error.
 type SkelingtonHook func(*Skelington) error
 
@@ -44,10 +57,10 @@ type SkelingtonHook func(*Skelington) error
 type HookTiming int
 
 const (
-	HBefore HookTiming = iota
-	HAfter
-	HPre
-	HPost
+	HBefore HookTiming = iota // before all handles are added
+	HPre                      // before any handle is added
+	HPost                     // after any handle is added
+	HAfter                    // after all handles are added
 )
 
 // An interface for hooks to be used by a Skelington. Provides for setting hooks
@@ -81,7 +94,7 @@ func (h *hooks) setHooks(t HookTiming, hs []SkelingtonHook) {
 	h.m[t] = hs
 }
 
-//
+// Adds the provided SkelingtonHook for the provided HookTiming.
 func (h *hooks) AddHook(t HookTiming, sh ...SkelingtonHook) {
 	hs := h.getHooks(t)
 	hs = append(hs, sh...)
@@ -98,12 +111,12 @@ func hookRun(h []SkelingtonHook, s *Skelington) error {
 	return nil
 }
 
-//
+// Run all hooks matching the provided HookTiming.
 func (h *hooks) RunHook(t HookTiming) error {
 	return hookRun(h.getHooks(t), h.s)
 }
 
-// A hook that sequences all Handle through categorization and sorting.
+// A sequencing hook.
 func SkelingtonSequence(s *Skelington) error {
 	return sortBy(s, categorize(s))
 }

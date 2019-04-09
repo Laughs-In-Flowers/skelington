@@ -11,6 +11,7 @@ type Handle interface {
 	Tagger
 	Pather
 	Caller
+	Handles
 }
 
 // A sequencing interface.
@@ -37,6 +38,12 @@ type Caller interface {
 	Clear()
 }
 
+// An interface for attaching any arbitrary item to the handle as an interface{}.
+type Handles interface {
+	Item() interface{}
+	SetItem(interface{})
+}
+
 type handle struct {
 	id       string
 	sequence *Sequence
@@ -44,41 +51,43 @@ type handle struct {
 	family   []*Tag
 	unit     *Tag
 	calls    []HandleCall
+	item     interface{}
 }
 
 func newHandle(s *Sequence, root *Tag, family []*Tag, unit *Tag) *handle {
 	h := &handle{
-		v4Quick(),
+		uuidString(),
 		s,
 		root,
 		family,
 		unit,
 		make([]HandleCall, 0),
+		nil,
 	}
 	return h
 }
 
-//
+// Returns the handle Sequence.
 func (h *handle) Sequence() *Sequence {
 	return h.sequence
 }
 
-//
+// Sets the provided Sequence to the handle.
 func (h *handle) SetSequence(s *Sequence) {
 	h.sequence = s
 }
 
-//
+// Returns the handle's root Tag.
 func (h *handle) Root() *Tag {
 	return h.root
 }
 
-//
+// Returns an array of Tag corresponding to the handles family.
 func (h *handle) Family() []*Tag {
 	return h.family
 }
 
-//
+// Returns the handle's unit Tag.
 func (h *handle) Unit() *Tag {
 	return h.unit
 }
@@ -89,6 +98,7 @@ type TagSort []*Tag
 func (s TagSort) Len() int           { return len(s) }
 func (s TagSort) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s TagSort) Less(i, j int) bool { return s[i].Order < s[j].Order }
+func (s TagSort) Sort()              { sort.Sort(s) }
 func (s TagSort) List() []string {
 	var ret []string
 	for _, v := range s {
@@ -97,7 +107,8 @@ func (s TagSort) List() []string {
 	return ret
 }
 
-//
+// Returns a sorted array of Tag for this handle. If provided parameter is true,
+// a separate tag is added corresponding to the handle's Sequence.
 func (h *handle) Tagged(seq bool) TagSort {
 	var ret TagSort
 	ret = append(ret, h.Root())
@@ -108,26 +119,29 @@ func (h *handle) Tagged(seq bool) TagSort {
 		s := h.Sequence()
 		ret = append(ret, &Tag{u.Order + 1, s.String()})
 	}
-	sort.Sort(ret)
+	ret.Sort()
 	return ret
 }
 
-// Key() for Pather interface.
+// Returns a string key for Pather interface.
 func (h *handle) Key() string {
 	return h.id
 }
 
-// Path() for Pather interface.
+// Returns a string path for Pather interface.
 func (h *handle) Path() string {
 	s := h.Tagged(true)
 	return filepath.Join(s.List()...)
 }
 
-// SetPath() for pather interface, but do not set a path for this case.
-func (h *handle) SetPath(path string) {}
+// SetPath() for pather interface.  Does not set a path for this package
+// specific type(allocation and tagging manages this).
+func (h *handle) SetPath(path string) {
+	// not implemented
+}
 
-// Tag() for Pather interface.
-func (h *handle) Tag() *Tag {
+// Returns a Tag, for Pather interface.
+func (h *handle) GetTag() *Tag {
 	return &Tag{-1, h.Key()}
 }
 
@@ -148,6 +162,17 @@ func (h *handle) SetCall(c ...HandleCall) {
 	h.calls = append(h.calls, c...)
 }
 
+//
 func (h *handle) Clear() {
 	h.calls = make([]HandleCall, 0)
+}
+
+//
+func (h *handle) Item() interface{} {
+	return h.item
+}
+
+//
+func (h *handle) SetItem(i interface{}) {
+	h.item = i
 }

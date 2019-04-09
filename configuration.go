@@ -1,10 +1,9 @@
 package skelington
 
 import (
-	"os"
 	"sort"
 
-	"github.com/Laughs-In-Flowers/log"
+	"github.com/Laughs-In-Flowers/xrr"
 )
 
 // A function taking a Processor instance for configuration and returning an error.
@@ -115,40 +114,12 @@ func (c *configuration) Configured() bool {
 }
 
 var builtIns = []Config{
-	config{1001, sLogger},
-	config{1002, sRoot},
-	config{1004, sError},
-	config{1005, sAllocator},
+	config{1001, sRoot},
+	config{1002, sError},
+	config{1003, sAllocator},
 }
 
-func sLogger(p *Processor) error {
-	if p.Logger == nil {
-		l := log.New(os.Stdout, log.LInfo, log.DefaultNullFormatter())
-		log.Current = l
-		p.Logger = l
-	}
-	return nil
-}
-
-// Sets the logger used by a string key. Both 'stdout' & 'text' change the logger
-// from the default null to default initialized text logging. Any other string key
-// will attempt to swap the logger to that key(which must've been set before hand
-// in other intialization or exists as a default available logger with the logging
-// package).
-func SkelingtonLogger(k string) Config {
-	return NewConfig(2000,
-		func(p *Processor) error {
-			switch k {
-			case "stdout", "text":
-				p.SwapFormatter(log.GetFormatter("skelington_text"))
-			default:
-				p.SwapFormatter(log.GetFormatter(k))
-			}
-			return nil
-		})
-}
-
-var ConfigurationError = xrror("configuration error: %s").Out
+var ConfigurationError = xrr.Xrror("configuration error: %s").Out
 
 func sRoot(p *Processor) error {
 	if p.root == nil {
@@ -158,7 +129,7 @@ func sRoot(p *Processor) error {
 }
 
 // Sets the root used by skelington & allocator.
-func SkelingtonRoot(path string) Config {
+func SetRoot(path string) Config {
 	return DefaultConfig(
 		func(p *Processor) error {
 			r := newPather("root", path)
@@ -168,7 +139,7 @@ func SkelingtonRoot(path string) Config {
 }
 
 // Sets the file path to read a configuration from, if the allocator requires one.
-func SkelingtonFile(path string) Config {
+func SetFile(path string) Config {
 	return DefaultConfig(
 		func(p *Processor) error {
 			r := newPather("file", path)
@@ -186,7 +157,7 @@ func sError(p *Processor) error {
 
 // Sets the skelington error handling method by string key:
 // one of 'continue', 'exit', or 'panic' with the default being 'continue'.
-func SkelingtonError(err string) Config {
+func SetError(err string) Config {
 	return DefaultConfig(
 		func(p *Processor) error {
 			var perr ErrorHandling = ContinueOnError
@@ -201,6 +172,37 @@ func SkelingtonError(err string) Config {
 		})
 }
 
+//
+func SetHook(t HookTiming, h ...SkelingtonHook) Config {
+	return DefaultConfig(
+		func(p *Processor) error {
+			var l []SkelingtonHook
+			var ok bool
+			l, ok = p.hookHolder[t]
+			if !ok {
+				l = make([]SkelingtonHook, 0)
+			}
+			l = append(l, h...)
+			p.hookHolder[t] = l
+			return nil
+		})
+}
+
+//
+func SetStat(k string, fn ...StatFunc) Config {
+	return DefaultConfig(
+		func(p *Processor) error {
+			var l []StatFunc
+			var ok bool
+			l, ok = p.statHolder[k]
+			if !ok {
+				l = make([]StatFunc, 0)
+			}
+			p.statHolder[k] = append(l, fn...)
+			return nil
+		})
+}
+
 func sAllocator(p *Processor) error {
 	if p.Allocator == nil {
 		p.Allocator = Allocators.Get("emp")
@@ -209,8 +211,8 @@ func sAllocator(p *Processor) error {
 }
 
 // Sets an allocator for the skelington by string key.
-func SkelingtonAllocator(k string) Config {
-	return NewConfig(50,
+func SetAllocator(k string) Config {
+	return DefaultConfig(
 		func(p *Processor) error {
 			a := Allocators.Get(k)
 			p.Allocator = a
@@ -219,8 +221,8 @@ func SkelingtonAllocator(k string) Config {
 }
 
 // Provides any desired offset to the allocator.
-func SkelingtonAllocationOffset(o string) Config {
-	return NewConfig(50,
+func SetAllocationOffset(o string) Config {
+	return DefaultConfig(
 		func(p *Processor) error {
 			if o != "" {
 				p.offset = o

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/Laughs-In-Flowers/xrr"
 )
 
 // A type used for switching on various error handling methods.
@@ -21,25 +23,7 @@ const (
 // A function taking an error for specific handling.
 type ErrorHandler func(error)
 
-type xrr struct {
-	base string
-	vals []interface{}
-}
-
-func (x *xrr) Error() string {
-	return fmt.Sprintf("%s", fmt.Sprintf(x.base, x.vals...))
-}
-
-func (x *xrr) Out(vals ...interface{}) *xrr {
-	x.vals = vals
-	return x
-}
-
-func xrror(base string) *xrr {
-	return &xrr{base: base}
-}
-
-var openError = xrror("unable to find or open file %s, provided %s").Out
+var openError = xrr.Xrror("unable to find or open file %s, provided %s").Out
 
 func exist(path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -82,7 +66,7 @@ type Pather interface {
 	Key() string
 	Path() string
 	SetPath(string)
-	Tag() *Tag
+	GetTag() *Tag
 }
 
 type pather struct {
@@ -109,9 +93,14 @@ func (p *pather) SetPath(path string) {
 }
 
 // The tag of the pather.
-func (p *pather) Tag() *Tag {
+func (p *pather) GetTag() *Tag {
 	return &Tag{0, p.path}
 }
+
+var (
+	DefaultSequencePatternString string = "([0-9A-Za-z]+)-of-([0-9A-Za-z]+)"
+	DefaultSequenceNumericalFmt  string = "%d-of-%d"
+)
 
 // A struct for managing a specific point within a sequence containing integers
 // for number and count.
@@ -121,7 +110,7 @@ type Sequence struct {
 
 // The string value for the given sequence.
 func (s *Sequence) String() string {
-	return fmt.Sprintf("%d-of-%d", s.Number, s.Count)
+	return fmt.Sprintf(DefaultSequenceNumericalFmt, s.Number, s.Count)
 }
 
 // A 16 byte universally unique identifier
@@ -154,7 +143,7 @@ func (u UUID) String() string {
 	return string(b[:])
 }
 
-func v4() (UUID, error) {
+func uuid() (UUID, error) {
 	u := UUID{}
 
 	_, err := cr.Read(u[:])
@@ -168,8 +157,8 @@ func v4() (UUID, error) {
 	return u, nil
 }
 
-func v4Quick() string {
-	u, err := v4()
+func uuidString() string {
+	u, err := uuid()
 	if err != nil {
 		return err.Error()
 	}

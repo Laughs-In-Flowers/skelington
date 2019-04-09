@@ -3,50 +3,37 @@ package skelington
 import (
 	"fmt"
 	"os"
-
-	"github.com/Laughs-In-Flowers/log"
 )
 
-// A core processing type to generate a Skelington instance. Maintains configuration,
-// settings, logging, and allocation.
+// A core processing type gathering everything required for Skelington generation.
 type Processor struct {
 	root         Pather
 	file         Pather
 	errorHandler ErrorHandling
 	offset       string
-	Configuration
-	log.Logger
+	hookHolder   map[HookTiming][]SkelingtonHook
+	statHolder   map[string][]StatFunc
 	Allocator
 }
 
-func emptyProcessor() *Processor {
-	s := &Processor{}
-	c := newConfiguration(s)
-	s.Configuration = c
-	return s
-}
-
 func newProcessor(cnf ...Config) (*Processor, error) {
-	s := emptyProcessor()
-	s.Add(cnf...)
-	err := s.Configure()
+	p := &Processor{
+		hookHolder: make(map[HookTiming][]SkelingtonHook),
+		statHolder: make(map[string][]StatFunc),
+	}
+	c := newConfiguration(p)
+	c.Add(cnf...)
+	err := c.Configure()
 	if err != nil {
 		return nil, err
 	}
-	return s, nil
+	return p, nil
 }
 
 // The core function that produces a Skelington instance from an allocation strategy.
 func (p *Processor) Process() *Skelington {
-	p.Print("begin processing")
-	if p.offset != "" {
-		p.Printf("processing with offset %s")
-	}
-
-	var ret *Skelington
-	ret = p.Allocate(p.file, p.root, p.offset, p.manageError)
-
-	p.Printf("finished processing")
+	s := newSkelington(p.hookHolder, p.statHolder)
+	ret := p.Allocate(s, p.file, p.root, p.offset, p.manageError)
 	return ret
 }
 
@@ -54,9 +41,9 @@ func (p *Processor) manageError(e error) {
 	if e != nil {
 		switch p.errorHandler {
 		case ContinueOnError:
-			p.Print(e)
+			fmt.Fprintf(os.Stdout, "%s\n", e)
 		case ExitOnError:
-			fmt.Fprintf(os.Stderr, "FATAL: %s\n", e)
+			fmt.Fprintf(os.Stdout, "FATAL: %s\n", e)
 			os.Exit(-1)
 		case PanicOnError:
 			panic(e)
@@ -64,6 +51,7 @@ func (p *Processor) manageError(e error) {
 	}
 }
 
-func init() {
-	log.SetFormatter("skelington_text", log.MakeTextFormatter("skelington"))
+type hookHold struct {
+	when HookTiming
+	fn   SkelingtonHook
 }
